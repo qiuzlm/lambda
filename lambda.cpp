@@ -1,10 +1,13 @@
 #include <cctype>
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <string>
 #include <variant>
 
 using namespace std;
+
+const string DEFNS_FILE_NAME = "defns.lambda";
 
 void replace_string(string& subject, const string& search, const string& replace) {
     size_t pos = 0;
@@ -178,46 +181,63 @@ struct Length {
     }
 };
 
+bool add_definition(string input, map<string, string, Length>& definitions) {
+    if (input.compare(0, 4, "let ") != 0)
+        return false;
+    if (input.size() < 7) {
+        cout << "syntax error" << endl << endl;
+        return false;
+    }
+    int index = 4;
+    string name;
+    while (input[index] != '=' && index < input.size()) {
+        name += input[index];
+        index++;
+    }
+    if (index + 1 >= input.size()) {
+        cout << "syntax error" << endl << endl;
+        return false;
+    }
+    replace_string(name, " ", "");
+    string stored_term_string = input.substr(index + 1);
+    if (name == "" || stored_term_string == "") {
+        cout << "syntax error" << endl << endl;
+        return false;
+    }
+    for (const auto& [name, stored_term] : definitions)
+        replace_string(stored_term_string, name, stored_term);
+    auto stored_term = Term::parse(stored_term_string);
+    if (!stored_term) {
+        cout << "syntax error" << endl << endl;
+        return false;
+    }
+    stored_term->reduce();
+    stored_term_string = stored_term->term_string();
+    cout << ":: let " << name << " = "; 
+    stored_term->print();
+    definitions[name] = "(" + stored_term_string + ")";
+    return true;
+}
+
 int main() {
     map<string, string, Length> definitions;
+    ifstream file(DEFNS_FILE_NAME);
+    if (file.is_open()) {
+        string line;
+        int line_number = 1;
+        while (getline(file, line)) {
+            if (!add_definition(line, definitions))
+                cout << "line " << line_number << ": invalid defn" << endl;
+            line_number++;
+        }
+        cout << endl;
+    }
     while (true) {
         cout << "λ> ";
         string input;
         getline(cin, input);
-        if (input.compare(0, 4, "let ") == 0) {
-            if (input.size() < 7) {
-                cout << "Syntax error" << endl << endl;
-                continue;
-            }
-            int index = 4;
-            string name;
-            while (input[index] != '=' && index < input.size()) {
-                name += input[index];
-                index++;
-            }
-            if (index + 1 >= input.size()) {
-                cout << "Syntax error" << endl << endl;
-                continue;
-            }
-            replace_string(name, " ", "");
-            string stored_term_string = input.substr(index + 1);
-            if (name == "" || stored_term_string == "") {
-                cout << "Syntax error" << endl << endl;
-                continue;
-            }
-            for (const auto& [name, stored_term] : definitions)
-                replace_string(stored_term_string, name, stored_term);
-            auto stored_term = Term::parse(stored_term_string);
-            if (!stored_term) {
-                cout << "Syntax error" << endl << endl;
-                continue;
-            }
-            stored_term->reduce();
-            stored_term_string = stored_term->term_string();
-            cout << ":: let " << name << " = "; 
-            stored_term->print();
+        if (add_definition(input, definitions)) {
             cout << endl;
-            definitions[name] = "(" + stored_term_string + ")";
             continue;
         }
         for (const auto& [name, stored_term] : definitions)
@@ -230,9 +250,9 @@ int main() {
             cout << "β= ";
             term->print();
         } else {
-            cout << "Syntax error";
+            cout << "syntax error";
         }
-        cout << endl << endl;
+        cout << endl;
     }
     return 0;
 }
