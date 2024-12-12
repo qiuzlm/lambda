@@ -1,8 +1,18 @@
+#include <cctype>
 #include <iostream>
+#include <map>
 #include <string>
 #include <variant>
 
 using namespace std;
+
+void replace_string(string& subject, const string& search, const string& replace) {
+    size_t pos = 0;
+    while ((pos = subject.find(search, pos)) != std::string::npos) {
+        subject.replace(pos, search.length(), replace);
+        pos += replace.length();
+    }
+}
 
 class Term {
     using Variable = int;
@@ -112,35 +122,36 @@ public:
         return nullptr;
     }
 
-    void print() {
-        if (is_variable()) {
-            cout << get_variable();
-            return;
-        }
+    string term_string() {
+        if (is_variable())
+            return to_string(get_variable());
+        string result;
         if (is_abstraction()) {
-            cout << "λ";
+            result += '\\'; 
             auto body = get_abstraction();
             if (!body->is_abstraction())
-                cout << ' ';
-            body->print();
-            return;
+                result += ' ';
+            return result + body->term_string();
         }
         auto [function, argument] = get_application();
         if (function->is_abstraction()) {
-            cout << '(';
-            function->print();
-            cout << ')';
+            result += '(' + function->term_string() + ')';
         } else {
-            function->print();
+            result += function->term_string();
         }
-        cout << ' ';
+        result += ' ';
         if (!argument->is_variable()) {
-            cout << '(';
-            argument->print();
-            cout << ')';
+            result += '(' + argument->term_string() + ')';
         } else {
-            argument->print();
+            result += argument->term_string();
         }
+        return result;
+    }
+
+    void print() {
+        string print_string = term_string();
+        replace_string(print_string, "\\", "λ");
+        cout << print_string << endl;
     }
 
     void reduce() {
@@ -161,22 +172,67 @@ public:
     }
 };
 
+struct Length {
+    bool operator()(const std::string& a, const std::string& b) const {
+        return a.size() > b.size() || (a.size() == b.size() && a < b);
+    }
+};
+
 int main() {
+    map<string, string, Length> definitions;
     while (true) {
         cout << "λ> ";
         string input;
         getline(cin, input);
+        if (input.compare(0, 4, "let ") == 0) {
+            if (input.size() < 7) {
+                cout << "Syntax error" << endl << endl;
+                continue;
+            }
+            int index = 4;
+            string name;
+            while (input[index] != '=' && index < input.size()) {
+                name += input[index];
+                index++;
+            }
+            if (index + 1 >= input.size()) {
+                cout << "Syntax error" << endl << endl;
+                continue;
+            }
+            replace_string(name, " ", "");
+            string stored_term_string = input.substr(index + 1);
+            if (name == "" || stored_term_string == "") {
+                cout << "Syntax error" << endl << endl;
+                continue;
+            }
+            for (const auto& [name, stored_term] : definitions)
+                replace_string(stored_term_string, name, stored_term);
+            auto stored_term = Term::parse(stored_term_string);
+            if (!stored_term) {
+                cout << "Syntax error" << endl << endl;
+                continue;
+            }
+            stored_term->reduce();
+            stored_term_string = stored_term->term_string();
+            cout << ":: let " << name << " = "; 
+            stored_term->print();
+            cout << endl;
+            definitions[name] = "(" + stored_term_string + ")";
+            continue;
+        }
+        for (const auto& [name, stored_term] : definitions)
+            replace_string(input, name, stored_term);
         Term* term = Term::parse(input);
         if (term) {
             cout << "α= ";
             term->print();
             term->reduce();
-            cout << endl << "β= ";
+            cout << "β= ";
             term->print();
         } else {
             cout << "Syntax error";
         }
-        cout << endl;
+        cout << endl << endl;
     }
     return 0;
 }
